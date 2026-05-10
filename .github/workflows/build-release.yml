@@ -1,0 +1,72 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag (e.g. v1.0.0) – required for workflow_dispatch"
+        required: true
+        default: "v0.0.0-dev"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Windows executable
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller==6.13.0
+
+      - name: Build executable
+        run: >
+          pyinstaller
+          --onefile
+          --windowed
+          --name OpenDeckInstaller
+          install_streamdeck_plugin.py
+
+      - name: Verify build output
+        run: Test-Path dist\OpenDeckInstaller.exe
+        shell: pwsh
+
+      - name: Determine release tag
+        id: tag
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            echo "name=${{ github.event.inputs.tag }}" >> $env:GITHUB_OUTPUT
+          } else {
+            echo "name=${{ github.ref_name }}" >> $env:GITHUB_OUTPUT
+          }
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.name }}
+          name: "OpenDeck Plugin Installer ${{ steps.tag.outputs.name }}"
+          body: |
+            ## OpenDeck Plugin Installer
+
+            **Download** `OpenDeckInstaller.exe` below and set it as the default program for `.streamDeckPlugin` files.
+
+            ### One-click install via "Open With"
+            1. Download `OpenDeckInstaller.exe` and save it somewhere permanent (e.g. `C:\Program Files\OpenDeckInstaller\`).
+            2. Right-click any `.streamDeckPlugin` file → **Open With** → **Choose another app**.
+            3. Browse to `OpenDeckInstaller.exe` and tick **Always use this app**.
+            4. From now on, double-clicking a `.streamDeckPlugin` file installs it automatically into `%APPDATA%\opendeck\plugins`.
+          generate_release_notes: false
+          files: dist/OpenDeckInstaller.exe

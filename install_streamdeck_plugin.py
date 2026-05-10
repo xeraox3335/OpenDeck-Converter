@@ -2,12 +2,31 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import os
 import shutil
 import sys
 import tempfile
 import zipfile
 from pathlib import Path
+
+
+def _is_frozen() -> bool:
+    """Return True when running as a PyInstaller-compiled executable."""
+    return getattr(sys, "frozen", False)
+
+
+def _notify(title: str, message: str, *, is_error: bool = False) -> None:
+    """Show a Windows message box when running as exe, otherwise print."""
+    if _is_frozen() and sys.platform == "win32":
+        MB_OK = 0x0
+        MB_ICONERROR = 0x10
+        MB_ICONINFORMATION = 0x40
+        flags = MB_OK | (MB_ICONERROR if is_error else MB_ICONINFORMATION)
+        ctypes.windll.user32.MessageBoxW(0, message, title, flags)
+    else:
+        dest = sys.stderr if is_error else sys.stdout
+        print(f"[{'ERROR' if is_error else 'OK'}] {title}: {message}", file=dest)
 
 
 def default_opendeck_plugins_dir() -> Path:
@@ -94,16 +113,40 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+
 def main() -> int:
+    # When launched with no arguments (e.g., double-clicked), show a usage hint.
+    if _is_frozen() and len(sys.argv) < 2:
+        _notify(
+            "OpenDeck Plugin Installer",
+            "To install a plugin, right-click a .streamDeckPlugin file and choose\n"
+            "'Open With' → OpenDeckInstaller.exe.\n\n"
+            "You can also drag a .streamDeckPlugin file onto this exe.",
+        )
+        return 0
+
     args = parse_args()
     package_path: Path = args.package.expanduser().resolve()
 
+    # When running as a compiled exe (i.e., via "Open With"), always overwrite
+    # existing plugin folders so the install is truly one-click.
+    if _is_frozen():
+        args.overwrite = True
+
     if not package_path.exists() or not package_path.is_file():
-        print(f"Package file not found: {package_path}", file=sys.stderr)
+        _notify(
+            "OpenDeck Plugin Installer",
+            f"Package file not found:\n{package_path}",
+            is_error=True,
+        )
         return 1
 
     if package_path.suffix.lower() != ".streamdeckplugin":
-        print("Input file must use the .streamDeckPlugin extension.", file=sys.stderr)
+        _notify(
+            "OpenDeck Plugin Installer",
+            "Input file must use the .streamDeckPlugin extension.",
+            is_error=True,
+        )
         return 1
 
     destination_root = (
@@ -117,10 +160,11 @@ def main() -> int:
             safe_extract_zip(package_path, extract_dir)
             plugin_dirs = discover_plugin_dirs(extract_dir)
             if not plugin_dirs:
-                print(
+                _notify(
+                    "OpenDeck Plugin Installer",
                     "No valid plugin found in archive "
                     "(expected a manifest.json file, preferably in a directory ending with .sdPlugin).",
-                    file=sys.stderr,
+                    is_error=True,
                 )
                 return 1
 
@@ -130,15 +174,25 @@ def main() -> int:
                     install_plugin_dir(plugin_dir, destination_root=destination_root, overwrite=args.overwrite)
                 )
 
-            print("Installed plugin folder(s):")
-            for path in installed_paths:
-                print(f"- {path}")
+            names = "\n".join(f"\u2022 {p.name}" for p in installed_paths)
+            _notify(
+                "OpenDeck Plugin Installer",
+                f"Plugin(s) installed successfully:\n{names}",
+            )
 
     except zipfile.BadZipFile:
-        print("Invalid .streamDeckPlugin file (not a valid ZIP archive).", file=sys.stderr)
+        _notify(
+            "OpenDeck Plugin Installer",
+            "Invalid .streamDeckPlugin file (not a valid ZIP archive).",
+            is_error=True,
+        )
         return 1
     except (RuntimeError, FileExistsError, OSError) as exc:
-        print(f"Installation failed: {exc}", file=sys.stderr)
+        _notify(
+            "OpenDeck Plugin Installer",
+            f"Installation failed:\n{exc}",
+            is_error=True,
+        )
         return 1
 
     return 0
