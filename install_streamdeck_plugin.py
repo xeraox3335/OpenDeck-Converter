@@ -174,7 +174,7 @@ def main() -> int:
                     install_plugin_dir(plugin_dir, destination_root=destination_root, overwrite=args.overwrite)
                 )
 
-            names = "\n".join(f"\u2022 {p.name}" for p in installed_paths)
+            names = "\n".join(f"- {p.name}" for p in installed_paths)
             _notify(
                 "OpenDeck Plugin Installer",
                 f"Plugin(s) installed successfully:\n{names}",
