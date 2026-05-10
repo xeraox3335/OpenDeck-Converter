@@ -26,7 +26,10 @@ def safe_extract_zip(zip_path: Path, extract_dir: Path) -> None:
             try:
                 resolved_member.relative_to(resolved_extract_dir)
             except ValueError:
-                raise RuntimeError(f"Unsafe archive entry detected: {member.filename}")
+                raise RuntimeError(
+                    f"Unsafe archive entry detected: {member.filename} "
+                    "(attempts to extract outside target directory; possible path traversal)."
+                )
         archive.extractall(extract_dir)
 
 
@@ -99,7 +102,7 @@ def main() -> int:
         print(f"Package file not found: {package_path}", file=sys.stderr)
         return 1
 
-    if package_path.suffix != ".streamDeckPlugin":
+    if package_path.suffix.lower() != ".streamdeckplugin":
         print("Input file must use the .streamDeckPlugin extension.", file=sys.stderr)
         return 1
 
@@ -114,7 +117,11 @@ def main() -> int:
             safe_extract_zip(package_path, extract_dir)
             plugin_dirs = discover_plugin_dirs(extract_dir)
             if not plugin_dirs:
-                print("No plugin folder found in archive (expected manifest.json / *.sdPlugin).", file=sys.stderr)
+                print(
+                    "No valid plugin found in archive "
+                    "(expected a manifest.json file, preferably in a directory ending with .sdPlugin).",
+                    file=sys.stderr,
+                )
                 return 1
 
             installed_paths: list[Path] = []
