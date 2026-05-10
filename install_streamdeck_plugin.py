@@ -23,7 +23,7 @@ def safe_extract_zip(zip_path: Path, extract_dir: Path) -> None:
             member_path = extract_dir / member.filename
             resolved_member = member_path.resolve()
             resolved_extract_dir = extract_dir.resolve()
-            if not str(resolved_member).startswith(str(resolved_extract_dir) + os.sep) and resolved_member != resolved_extract_dir:
+            if not str(resolved_member).startswith(str(resolved_extract_dir) + os.sep):
                 raise RuntimeError(f"Unsafe archive entry detected: {member.filename}")
         archive.extractall(extract_dir)
 
@@ -40,7 +40,15 @@ def discover_plugin_dirs(extract_dir: Path) -> list[Path]:
     manifest_parents = sorted({m.parent for m in manifests}, key=lambda p: len(p.parts))
     selected: list[Path] = []
     for candidate in manifest_parents:
-        if not any(parent in candidate.parents for parent in selected):
+        is_nested = False
+        for parent in selected:
+            try:
+                candidate.relative_to(parent)
+                is_nested = True
+                break
+            except ValueError:
+                continue
+        if not is_nested:
             selected.append(candidate)
     return selected
 
