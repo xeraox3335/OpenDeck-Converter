@@ -23,14 +23,17 @@ def safe_extract_zip(zip_path: Path, extract_dir: Path) -> None:
             member_path = extract_dir / member.filename
             resolved_member = member_path.resolve()
             resolved_extract_dir = extract_dir.resolve()
-            if not str(resolved_member).startswith(str(resolved_extract_dir) + os.sep):
+            try:
+                resolved_member.relative_to(resolved_extract_dir)
+            except ValueError:
                 raise RuntimeError(f"Unsafe archive entry detected: {member.filename}")
         archive.extractall(extract_dir)
 
 
 def discover_plugin_dirs(extract_dir: Path) -> list[Path]:
     manifests = list(extract_dir.rglob("manifest.json"))
-    sdplugin_dirs = sorted({m.parent for m in manifests if m.parent.name.endswith(".sdPlugin")}, key=lambda p: len(p.parts))
+    sdplugin_candidates = {m.parent for m in manifests if m.parent.name.endswith(".sdPlugin")}
+    sdplugin_dirs = sorted(sdplugin_candidates, key=lambda p: len(p.parts))
     if sdplugin_dirs:
         return sdplugin_dirs
 
@@ -127,7 +130,7 @@ def main() -> int:
     except zipfile.BadZipFile:
         print("Invalid .streamDeckPlugin file (not a valid ZIP archive).", file=sys.stderr)
         return 1
-    except Exception as exc:  # noqa: BLE001
+    except (RuntimeError, FileExistsError, OSError) as exc:
         print(f"Installation failed: {exc}", file=sys.stderr)
         return 1
 
